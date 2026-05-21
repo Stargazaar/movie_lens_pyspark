@@ -23,11 +23,28 @@ movie_lens_pyspark/
 ## Setup Instructions
 
 ### Prerequisites
-- Python 3.10 or higher
-- [uv](https://github.com/astral-sh/uv) package manager
-Use powershell: powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-Check: uv --version
-uv 0.11.15 (3cffe97c2 2026-05-18 x86_64-pc-windows-msvc)
+
+#### 1. Java (required by PySpark)
+PySpark runs on the JVM, so Java must be installed. JDK 11, 17, or 21 all work.
+
+Download from: https://adoptium.net/temurin/releases/?version=21&os=windows&arch=x64&package=jdk
+
+Install the `.msi`, then verify:
+```powershell
+java -version
+# Expected: openjdk version "21.x.x" ...
+```
+
+> **Note:** The notebook auto-detects your Java installation via `java -XshowSettings:property`, so no manual path configuration is needed after install.
+
+#### 2. Python 3.10 or higher
+Download from: https://www.python.org/downloads/
+
+#### 3. uv package manager
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+Verify: `uv --version`
 
 ### Dataset Download
 Download the MovieLens Latest Small dataset from:

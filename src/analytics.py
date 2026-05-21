@@ -221,9 +221,6 @@ def build_inflight_catalog(
 
     return inflight_catalog
 
-
-# ==================== ANOMALY DETECTION ====================
-
 def detect_user_rating_anomalies(ratings_df: DataFrame) -> DataFrame:
     """
     Detect users with suspiciously high rating volumes using z-score.
@@ -257,74 +254,3 @@ def detect_user_rating_anomalies(ratings_df: DataFrame) -> DataFrame:
     ).orderBy(desc("z_score"))
 
     return user_anomalies
-
-
-def detect_movie_rating_anomalies(ratings_df: DataFrame) -> DataFrame:
-    """
-    Detect movies with statistically improbable rating distributions.
-
-    Flag movies where:
-        - Rating count is very low but all ratings are identical (suspicious)
-        - Rating distribution is extremely skewed
-
-    Args:
-        ratings_df: Silver-level ratings
-
-    Returns:
-        DataFrame with movieId, rating_count, unique_ratings, is_suspicious
-    """
-    # Compute metrics per movie
-    movie_stats = ratings_df.groupBy("movieId").agg(
-        count("rating").alias("rating_count"),
-        countDistinct("rating").alias("unique_ratings"),
-        avg("rating").alias("avg_rating")
-    )
-
-    # Flag suspicious patterns
-    movie_anomalies = movie_stats.withColumn(
-        "is_suspicious",
-        when(
-            (col("rating_count") > 5) & (col("unique_ratings") == 1),
-            True
-        ).otherwise(False)
-    ).orderBy(desc("rating_count"))
-
-    return movie_anomalies
-
-
-def detect_temporal_anomalies(ratings_df: DataFrame) -> DataFrame:
-    """
-    Detect temporal anomalies in rating patterns.
-
-    Flag periods with unusually high rating volume (possible bot activity).
-
-    Args:
-        ratings_df: Silver-level ratings with normalized timestamps
-
-    Returns:
-        DataFrame with date, rating_count, z_score, is_anomaly
-    """
-    # Extract date from timestamp
-    ratings_by_date = ratings_df.withColumn(
-        "date",
-        col("timestamp").cast("date")
-    ).groupBy("date").agg(
-        count("rating").alias("rating_count")
-    )
-
-    # Compute mean and std dev
-    stats = ratings_by_date.agg(
-        avg("rating_count").alias("mean_count"),
-        stddev("rating_count").alias("std_count")
-    ).collect()[0]
-
-    # Compute z-score and flag anomalies
-    temporal_anomalies = ratings_by_date.withColumn(
-        "z_score",
-        (col("rating_count") - stats["mean_count"]) / stats["std_count"]
-    ).withColumn(
-        "is_anomaly",
-        spark_abs(col("z_score")) > 3
-    ).orderBy(desc("z_score"))
-
-    return temporal_anomalies
