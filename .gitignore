@@ -3,6 +3,17 @@ db/
 intermediate/
 input/
 
+# reference
+reference/
+
+# MovieLens dataset (downloaded separately)
+data/raw/*.csv
+
+# PySpark local mode artifacts
+spark-warehouse/
+metastore_db/
+derby.log
+
 # test jupyternotebooks
 core/test.ipynb
 
