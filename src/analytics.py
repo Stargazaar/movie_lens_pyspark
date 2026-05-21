@@ -203,12 +203,12 @@ def build_inflight_catalog(
         how="inner"
     )
 
-    # Get genres for each movie
-    movies_with_genres = movies_with_scores.join(
-        movies_exploded_df,
-        on="movieId",
-        how="inner"
-    )
+    # # Get genres for each movie
+    # movies_with_genres = movies_with_scores.join(
+    #     movies_exploded_df,
+    #     on="movieId",
+    #     how="inner"
+    # )
 
     # Simple strategy: select top movies by composite score
     # In a real scenario, you'd implement more sophisticated genre balancing

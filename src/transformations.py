@@ -8,26 +8,33 @@ Gold layer: Aggregated business-ready tables for analytics
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
     col, from_unixtime, to_timestamp, explode, split, count, avg, countDistinct,
-    when, lit, broadcast
+    when, lit, broadcast, row_number, regexp_extract
 )
+from pyspark.sql.window import Window
 
 
 # ==================== SILVER LAYER ====================
 
 def deduplicate_ratings(ratings_df: DataFrame) -> DataFrame:
     """
-    Remove duplicate ratings (same user, same movie, same timestamp).
+    Remove duplicate ratings (same user rating the same movie more than once).
 
-    Duplicates can occur due to data collection errors or system bugs.
-    We keep only one record per unique (userId, movieId, timestamp) combination.
+    When duplicates exist, keep the latest rating (highest timestamp) as it
+    reflects the user's most current opinion.
 
     Args:
         ratings_df: Raw ratings DataFrame
 
     Returns:
-        Deduplicated ratings DataFrame
+        Deduplicated ratings DataFrame with one rating per (userId, movieId)
     """
-    return ratings_df.dropDuplicates(["userId", "movieId", "timestamp"])
+    window = Window.partitionBy("userId", "movieId").orderBy(col("timestamp").desc())
+    return (
+        ratings_df
+        .withColumn("_rn", row_number().over(window))
+        .filter(col("_rn") == 1)
+        .drop("_rn")
+    )
 
 
 def normalize_timestamps(ratings_df: DataFrame, tags_df: DataFrame) -> tuple[DataFrame, DataFrame]:
@@ -82,6 +89,31 @@ def explode_genres(movies_df: DataFrame) -> DataFrame:
     movies_exploded = movies_exploded.filter(col("genre") != "(no genres listed)")
 
     return movies_exploded
+
+
+def extract_release_year(movies_df: DataFrame) -> DataFrame:
+    """
+    Extract the release year from movie titles.
+
+    MovieLens titles follow the convention "Movie Title (YYYY)".
+    The year is extracted into a separate integer column for time-based analysis
+    (e.g. ratings vs release recency, decade-level genre trends).
+
+    Movies with no parseable year (e.g. missing or malformed) get null.
+
+    Args:
+        movies_df: Movies DataFrame with a title column
+
+    Returns:
+        Movies DataFrame with an additional integer release_year column
+    """
+    return movies_df.withColumn(
+        "release_year",
+        when(
+            regexp_extract(col("title"), r"\((\d{4})\)\s*$", 1) != "",
+            regexp_extract(col("title"), r"\((\d{4})\)\s*$", 1).cast("int")
+        ).otherwise(None)
+    )
 
 
 # ==================== GOLD LAYER ====================
