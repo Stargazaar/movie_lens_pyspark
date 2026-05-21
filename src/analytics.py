@@ -12,8 +12,6 @@ from pyspark.sql.functions import (
 from pyspark.sql.window import Window
 
 
-# ==================== ANALYTICAL QUESTIONS ====================
-
 def top_genres_by_year(ratings_df: DataFrame, movies_exploded_df: DataFrame) -> DataFrame:
     """
     Compute top 10 genres by total ratings, with yearly popularity evolution.
@@ -254,3 +252,79 @@ def detect_user_rating_anomalies(ratings_df: DataFrame) -> DataFrame:
     ).orderBy(desc("z_score"))
 
     return user_anomalies
+
+def detect_movie_rating_anomalies(ratings_df: DataFrame) -> DataFrame:
+    """
+    Detect movies with statistically improbable rating distributions.
+
+    Flag movies where rating variance is suspiciously low — i.e. the stddev
+    of ratings is more than 3σ below the mean stddev across all movies.
+    Only movies with at least 10 ratings are considered.
+
+    Args:
+        ratings_df: Silver-level ratings
+
+    Returns:
+        DataFrame with movieId, rating_count, avg_rating, rating_stddev,
+        variance_z_score, is_suspicious
+    """
+    # Compute per-movie stats (only movies with enough ratings)
+    movie_stats = ratings_df.groupBy("movieId").agg(
+        count("rating").alias("rating_count"),
+        avg("rating").alias("avg_rating"),
+        stddev("rating").alias("rating_stddev")
+    ).filter(col("rating_count") >= 10)
+
+    # Compute mean and stddev of the per-movie stddevs
+    variance_stats = movie_stats.agg(
+        avg("rating_stddev").alias("mean_stddev"),
+        stddev("rating_stddev").alias("std_stddev")
+    ).collect()[0]
+
+    # Flag movies whose rating stddev is > 3σ below the mean (unusually uniform)
+    movie_anomalies = movie_stats.withColumn(
+        "variance_z_score",
+        (col("rating_stddev") - variance_stats["mean_stddev"]) / variance_stats["std_stddev"]
+    ).withColumn(
+        "is_suspicious",
+        col("variance_z_score") < -3
+    ).orderBy("variance_z_score")
+
+    return movie_anomalies
+
+def detect_temporal_anomalies(ratings_df: DataFrame) -> DataFrame:
+    """
+    Detect temporal anomalies in rating patterns.
+
+    Flag periods with unusually high rating volume (possible bot activity).
+
+    Args:
+        ratings_df: Silver-level ratings with normalized timestamps
+
+    Returns:
+        DataFrame with date, rating_count, z_score, is_anomaly
+    """
+    # Extract date from timestamp
+    ratings_by_date = ratings_df.withColumn(
+        "date",
+        col("timestamp").cast("date")
+    ).groupBy("date").agg(
+        count("rating").alias("rating_count")
+    )
+
+    # Compute mean and std dev
+    stats = ratings_by_date.agg(
+        avg("rating_count").alias("mean_count"),
+        stddev("rating_count").alias("std_count")
+    ).collect()[0]
+
+    # Compute z-score and flag anomalies
+    temporal_anomalies = ratings_by_date.withColumn(
+        "z_score",
+        (col("rating_count") - stats["mean_count"]) / stats["std_count"]
+    ).withColumn(
+        "is_anomaly",
+        spark_abs(col("z_score")) > 3
+    ).orderBy(desc("z_score"))
+
+    return temporal_anomalies
