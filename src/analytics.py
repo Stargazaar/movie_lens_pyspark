@@ -6,8 +6,8 @@ All functions return DataFrames for easy inspection and further analysis.
 
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
-    col, count, countDistinct, avg, sum, min, max, desc, asc, year, when, lit,
-    broadcast, row_number, stddev, abs as spark_abs
+    col, count, avg, sum, min, max, desc, year,
+    lit as spark_lit, broadcast, row_number, stddev, abs as spark_abs
 )
 from pyspark.sql.window import Window
 
@@ -95,6 +95,7 @@ def find_hidden_gems(
     # Filter hidden gems
     hidden_gems = movie_metrics.filter(
         (col("rating_count") < 50) & (col("avg_rating") > 4.0)
+        & (col("rating_count") >= 5)
     )
 
     # Join with movie titles
@@ -144,38 +145,44 @@ def find_hidden_gems(
 def build_inflight_catalog(
     ratings_df: DataFrame,
     movies_df: DataFrame,
+    movies_with_year_df: DataFrame,
     movies_exploded_df: DataFrame,
-    num_movies: int = 100
+    hidden_gems_df: DataFrame,
+    cutoff_year: int
 ) -> DataFrame:
     """
-    Select movies for inflight catalog to maximize passenger satisfaction.
+    Select movies for inflight catalog to maximise passenger satisfaction.
 
-    Selection criteria:
-        1. High average rating (quality)
-        2. Sufficient rating count (popularity)
-        3. Genre diversity (coverage across tastes)
+    Three-section selection strategy:
+        1. Recent Blockbusters (10) — top composite-scored movies released in the
+           past year of the dataset, with at least 10 ratings.
+        2. Hidden Gems (10) — top hidden gems (< 50 ratings, avg > 4.0).
+        3. Genre-Weighted Fill (80) — remaining slots allocated proportionally
+           across the top 10 genres by composite score, and 2 over-represented
+           genres from earlier analyses.
 
-    Strategy:
-        - Compute a composite score: weighted average of (normalized rating + normalized count)
-        - Select top movies by score, ensuring genre diversity via stratified sampling
+    Movies are deduplicated between sections (earlier sections take priority).
 
     Args:
         ratings_df: Silver-level ratings
-        movies_df: Silver-level movies
+        movies_df: Silver-level movies (with genres column)
+        movies_with_year_df: Silver-level movies with release_year column
         movies_exploded_df: Silver-level movies with exploded genres
-        num_movies: Number of movies to select (default 100)
+        hidden_gems_df: Pre-computed hidden gems DataFrame (movieId, avg_rating, ...)
+        cutoff_year: Minimum release year for recent blockbusters (e.g., latest_year - 1)
 
     Returns:
-        DataFrame with selected movies and their scores
+        DataFrame with movieId, title, genres, avg_rating, rating_count,
+        composite_score, selection_reason
     """
-    # Compute movie-level metrics
+    # --- Compute composite score per movie ---
+    # Composite = 60% normalised avg_rating + 40% normalised rating_count
     movie_metrics = ratings_df.groupBy("movieId").agg(
         avg("rating").alias("avg_rating"),
         count("rating").alias("rating_count")
     )
 
-    # Normalize metrics (min-max scaling)
-    # Get min/max for normalization
+    # Collect min/max for min-max normalisation
     stats = movie_metrics.agg(
         min("avg_rating").alias("min_rating"),
         max("avg_rating").alias("max_rating"),
@@ -183,41 +190,109 @@ def build_inflight_catalog(
         max("rating_count").alias("max_count")
     ).collect()[0]
 
-    # Apply normalization and compute composite score
-    # Weight: 60% quality (rating), 40% popularity (count)
-    movie_scores = movie_metrics.withColumn(
-        "norm_rating",
-        (col("avg_rating") - stats["min_rating"]) / (stats["max_rating"] - stats["min_rating"])
-    ).withColumn(
-        "norm_count",
-        (col("rating_count") - stats["min_count"]) / (stats["max_count"] - stats["min_count"])
-    ).withColumn(
+    # Apply normalisation using collected scalars as Python literals
+    movies_with_scores = movie_metrics.withColumn(
         "composite_score",
-        col("norm_rating") * 0.6 + col("norm_count") * 0.4
+        (col("avg_rating") - stats["min_rating"]) / (stats["max_rating"] - stats["min_rating"]) * 0.6
+        + (col("rating_count") - stats["min_count"]) / (stats["max_count"] - stats["min_count"]) * 0.4
+    ).join(
+        movies_df.select("movieId", "title", "genres"),
+        on="movieId", how="inner"
     )
 
-    # Join with movie info
-    movies_with_scores = movie_scores.join(
-        movies_df,
-        on="movieId",
-        how="inner"
+    # --- Section 1: Recent Blockbusters (10) ---
+    recent_blockbusters = (
+        movies_with_scores
+        .join(movies_with_year_df.select("movieId", "release_year"), on="movieId", how="inner")
+        .filter((col("release_year") >= cutoff_year) & (col("rating_count") >= 10))
+        .orderBy(desc("composite_score"), desc("rating_count"))
+        .limit(10)
+        .drop("release_year")
+        .withColumn("selection_reason", spark_lit("recent_blockbuster"))
     )
 
-    # # Get genres for each movie
-    # movies_with_genres = movies_with_scores.join(
-    #     movies_exploded_df,
-    #     on="movieId",
-    #     how="inner"
-    # )
+    blockbuster_ids = [row["movieId"] for row in recent_blockbusters.select("movieId").collect()]
 
-    # Simple strategy: select top movies by composite score
-    # In a real scenario, you'd implement more sophisticated genre balancing
-    inflight_catalog = movies_with_scores.orderBy(
-        desc("composite_score"),
-        desc("rating_count")
-    ).limit(num_movies)
+    # --- Section 2: Hidden Gems (10) ---
+    # Take top 10 hidden gems not already in blockbusters
+    gems_ids = [
+        row["movieId"]
+        for row in hidden_gems_df.select("movieId").collect()
+        if row["movieId"] not in blockbuster_ids
+    ][:10]
 
-    return inflight_catalog
+    hidden_gem_selection = (
+        movies_with_scores
+        .filter(col("movieId").isin(gems_ids))
+        .withColumn("selection_reason", spark_lit("hidden_gem"))
+    )
+
+    # Combined exclusion set for section 3
+    excluded_ids = list(set(blockbuster_ids + gems_ids))
+
+    # --- Section 3: Genre-Weighted Fill (80) ---
+    genre_allocation = {
+        "Drama": 12, "Comedy": 12, "Action": 10, "Thriller": 8,
+        "Adventure": 7, "Romance": 6, "Sci-Fi": 6, "Crime": 6,
+        "Fantasy": 4, "Children": 5, "Documentary": 2, "Film-Noir": 2
+    }
+
+    # Rank movies per genre by composite score using a window function
+    genre_window = Window.partitionBy("genre").orderBy(
+        desc("composite_score"), desc("rating_count")
+    )
+
+    ranked_by_genre = (
+        movies_with_scores
+        .join(movies_exploded_df.select("movieId", "genre").distinct(), on="movieId", how="inner")
+        .filter(~col("movieId").isin(excluded_ids))
+        .withColumn("genre_rank", row_number().over(genre_window))
+    )
+
+    # For each genre, keep only movies up to the allocated slot count
+    genre_fill_ids = set()
+    for genre, slots in genre_allocation.items():
+        picks = (
+            ranked_by_genre
+            .filter((col("genre") == genre) & (col("genre_rank") <= slots))
+            .select("movieId")
+            .collect()
+        )
+        for row in picks:
+            genre_fill_ids.add(row["movieId"])
+
+    # Backfill if cross-genre overlap reduced count below 80
+    if len(genre_fill_ids) < 80:
+        shortfall = 80 - len(genre_fill_ids)
+        all_excluded = excluded_ids + list(genre_fill_ids)
+        backfill = (
+            movies_with_scores
+            .filter(~col("movieId").isin(all_excluded))
+            .orderBy(desc("composite_score"), desc("rating_count"))
+            .limit(shortfall)
+            .select("movieId")
+            .collect()
+        )
+        for row in backfill:
+            genre_fill_ids.add(row["movieId"])
+
+    genre_fill_selection = (
+        movies_with_scores
+        .filter(col("movieId").isin(list(genre_fill_ids)))
+        .withColumn("selection_reason", spark_lit("genre_fill"))
+    )
+
+    # --- Union all three sections ---
+    output_cols = ["movieId", "title", "genres", "avg_rating", "rating_count",
+                   "composite_score", "selection_reason"]
+
+    catalog = (
+        recent_blockbusters.select(*output_cols)
+        .unionByName(hidden_gem_selection.select(*output_cols))
+        .unionByName(genre_fill_selection.select(*output_cols))
+    )
+
+    return catalog
 
 def detect_user_rating_anomalies(ratings_df: DataFrame) -> DataFrame:
     """

@@ -7,8 +7,8 @@ Gold layer: Aggregated business-ready tables for analytics
 
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
-    col, from_unixtime, to_timestamp, explode, split, count, avg, countDistinct,
-    when, lit, broadcast, row_number, regexp_extract
+    col, from_unixtime, to_timestamp, explode, split, count, avg,
+    when, broadcast, row_number, regexp_extract
 )
 from pyspark.sql.window import Window
 
