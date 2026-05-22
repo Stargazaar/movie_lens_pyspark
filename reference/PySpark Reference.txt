@@ -1,0 +1,199 @@
+Spark Dataframe
+A DataFrame is an immutable, table-like, distributed data organized into rows, where each one consists a set of columns and each
+column has a name and an associated type.
+	• DataFrames can process data that's available in different formats, such as CSV, AVRO, and JSON, or stored in any storage media, such as Hive, HDFS, and RDBMS
+	• DataFrames can process data volumes from kilobytes to petabytes
+	• Use the Spark Spark-SQL query optimizer to process data in a distributed and optimized manner
+	• Support for APIs in multiple languages, including Java, Scala, Python, and R
+	• DataFrames can be created
+		○  From an existing structured data source (Parquet file, JSON file,
+		○ From an existing RDD
+		○ By performing an operation or query on another DataFrame
+		- By programmatically defining a schema
+
+Command	Purpose	Code	Output
+show	Aka df.head(3)	df.show(3)	
+		https://spark.apache.org/docs/latest/api/python/reference/api/pyspark.sql.DataFrame.show.html	
+		DataFrame.show(n=20, truncate=True, vertical=False)
+		n is number of rows to show
+		Truncate: if columns should be truncated
+		
+printSchema	 #columns and datatypes	df.printSchema()	
+			
+count	number of rows	df.count() 	23475
+describe	Similar to pandas describe. With less statistical values, and also describe string columns	df.describe().show()	
+			
+distinct	Show distinct/unique values	df.select("Lang_Turkish").distinct().show()	
+			
+Sort or orderby	Sort by ascending order of 1 column	DataFrame.orderBy(*cols, **kwargs)	
+		Ascending: bool. True by default for ascending. Can take in a list if cols is a list. 	
+			
+		df.orderBy("Age", ascending = False).show(5)
+		
+			
+Dataframe Manipulations and subsetting
+Command	Purpose	Code	Output
+createDataFrame	Create df from list of tuples	temp = [("A",10), 	
+		        ("B",20), 	
+		        ("C",30), 
+		        ("D",40) 
+		      ]
+		
+		columns = ["Person","Age"]
+		df = spark.createDataFrame(data=temp, schema = columns)
+parallelize	Create rdd from row	df_alice = sc.parallelize([ \	
+		     Row(name='Alice', age=5, height=80), \	
+		     Row(name='Alice', age=5, height=80), \
+		     Row(name='Alice', age=10, height=80)]).toDF()
+		
+		df_alice.show()
+select	Subset of columns	df.select("CustomerID", "CustomerName", "Age").show(2, False)	
+		    	
+		Or
+		
+		df.select(df["CustomerID"], df["CustomerName"], df["Age"]).show(2, False)
+		
+		Or
+		   
+		 df.select(col("CustomerID"), col("CustomerName"), 
+		col("Age")).show(2, False)
+selectExpr	Select columns and also apply some sort of transformation over particular columns	df.selectExpr('CustomerName', 'Age', 'Age * 2').show(2)	
+			
+Filter or where	Filter rows	df.filter(df.Age > 15).show(truncate=False)	
+		df.filter("Age > 15").show()	
+	Filter rows with multiple conditions	df.filter("MemberCategory = 'A' AND CustomerName LIKE 'T%'").show()	
+limit	This returns a new DataFrame by taking the first	df2 = df.limit(1)	
+	First n rows.		
+withColumn	This is used to add a new column or replace an existing	df_alice.withColumn('age2', df_alice.age + 2).show()	
+	column in the DataFrame.		
+withColumnRenamed	This renames an existing column. If a given column name doesn’t exist in the schema, then nth happens.	df_alice.withColumnRenamed('age', 'age2').show()	
+			
+dropDuplicates	Return a new DataFrame with duplicate rows removed, optionally only considering certain column	df_alice.dropDuplicates(['name', 'height']).show()	
+			
+drop	Returns a new DataFrame that drops the specified column. Nothing happens if specified column does not exist. 	df_alice.drop('height').show()	
+			
+agg	Aggregates dataframe using the selected function	df.agg(avg("RentalPrice")).show()	
+			df.agg(avg("RentalPrice"), variance("RentalPrice"), stddev("RentalPrice")).show()
+		df.agg(avg("RentalPrice"), variance("RentalPrice"), stddev("RentalPrice")).show()
+		
+		Or use dictionary:
+		df.agg({"age": "max"}).collect()
+		
+na.drop	Drop rows with nulls	    temp = [("A", None),	
+	drop(how='any', thresh=None, subset=None)[source]	            ("B", 20),	
+		            ("C", 30),
+		            ("D", 40)
+	how – ‘any’ or ‘all’. If ‘any’, drop a row if it contains any nulls. If ‘all’, drop a row only if all its values are null.	            ]
+	thresh – int, default None If specified, drop rows that have less than thresh non-null values. This overwrites the how parameter.	
+	subset – optional list of column names to consider.	    columns = ["Person", "Age"]
+		    df = spark.createDataFrame(data=temp, schema=columns)
+		    df.na.drop.show()
+na.fill	fill(value, subset=None)	temp = [("A", None),	
+		            ("B", 20),	
+	value – int, long, float, string, bool or dict. Value to replace null values with	            ("C", 30),
+	subset – optional list of column names to consider	            ("D", 40)
+	Or can just use a dict in value. 	            ]
+		
+		    columns = ["Person", "Age"]
+		    df = spark.createDataFrame(data=temp, schema=columns)
+		    df.na.fill(99).show()
+
+Narrow operations are faster
+	•  Narrow transformation — In Narrow transformation, all the elements that are required to compute the records in single partition live in the single partition of parent RDD. A limited subset of partition is used to calculate the result. Narrow transformations are the result of map(), filter().
+ Wide transformation — In wide transformation, all the elements that are required to compute the records in the single partition may live in many partitions of parent RDD. The partition may live in many partitions of parent RDD. Wide transformations are the result of groupbyKey and reducebyKey.
+ 
+RDDs support two types of operations: 
+	• transformations, which create a new dataset from an existing one. Lazily evaluated
+		○ For example, map is a transformation that passes each dataset element through a function and returns a new RDD representing the results. 
+	• actions, which return a value to the driver program after running a computation on the dataset. 
+For example, reduce is an action that aggregates all the elements of the RDD using some function and returns the final result to the driver program (although there is also a parallel reduceByKey that returns a distributed dataset)
+
+Joins
+DataFrame.join(other, on=None, how=None)
+	• Other: DataFrame
+		○ Right side of the join
+	• On: str, list or Column, optional
+		○ a string for the join column name, a list of column names, a join expression (Column), or a list of Columns. If on is a string or a list of strings indicating the name of the join column(s), the column(s) must exist on both sides, and this performs an equi-join.
+	• How: str, optional
+		○ default inner. Must be one of: inner, cross, outer, full, fullouter, full_outer, left, leftouter, left_outer, right, rightouter, right_outer, semi, leftsemi, left_semi, anti, leftantiand left_anti.
+
+Example 1: join basics
+from pyspark.sql import Row
+from pyspark import SparkContext
+sc = SparkContext.getOrCreate() #or use Example 1: Basics with Setup for setups
+
+df1 = sc.parallelize([ \
+     Row(name='A', age=5, height=80), \
+     Row(name='B', age=5, height=80), \
+     Row(name='C', age=10, height=80)]).toDF()
+
+df2 = sc.parallelize([ \
+     Row(name='A', age=5, bmi=80), \
+     Row(name='B', age=5, bmi=80)]).toDF()
+
+
+df1.join(df2, df1.name == df2.name, 'outer').show()
+
+
+cond = [df1.name == df2.name, df1.age == df2.age]
+df1.join(df2, cond, 'left').show()
+
+
+Groupby
+from pyspark.sql import Row
+from pyspark import SparkContext
+sc = SparkContext.getOrCreate()
+
+df = sc.parallelize([ \
+     Row(name='A', cash=5, height=80), \
+     Row(name='A', cash=5, height=10), \
+     Row(name='C', age=10, height=80)]).toDF()
+
+
+df.groupBy("name").agg(sum("cash")).show()
+
+df.groupBy("name").agg(count("cash")).show()
+
+
+Rollup and Cube
+DataFrame.rollup(*cols):  Create a multi-dimensional rollup for the current DataFrame using the specified columns, so we can run aggregation on them.
+DataFrame.cube(*cols): Create a multi-dimensional cube for the current DataFrame using the specified columns, so we can run aggregations on them. Treats all columns as primary. 
+
+Example 1: basics
+from pyspark import SparkContext, SparkConf
+from pyspark.sql  import *
+from pyspark.sql.functions import *
+from pyspark.sql.types import *
+
+def main():
+
+    cnfg = SparkConf().setAppName("CustomerApplication").setMaster("local[*]")
+    sc = SparkContext(conf=cnfg)
+    sc.setLogLevel("ERROR")
+    spark = SparkSession(sc)
+
+    inputFilePath = "C:/Users/QK/Desktop/Python/bigdata/workshop09/Customer.csv"
+    df = spark.read.option("header", "true").option("inferSchema", "true").csv(inputFilePath)
+
+    df.groupBy("MemberCategory", "Gender")\
+        .sum("AmountSpent").orderBy("MemberCategory", "Gender")\
+        .show(200, False)
+
+    df.rollup("MemberCategory", "Gender")\
+        .sum("AmountSpent").orderBy("MemberCategory", "Gender")\
+        .show(200, False)
+
+#Observe that there are more rows now. The rows with “null” represent the totals of all the grouping divisions. For instance the value reflected in B-Null is the sum of B-M and B-F
+
+    df.cube("MemberCategory", "Gender")\
+        .sum("AmountSpent")\
+        .orderBy("MemberCategory", "Gender")\
+        .show(200, False)
+
+#Observe that while in the case of rollup the MemberCategory was taken as primary and the total for only the sub-category was performed, the cube is multidimensional. This means computation of totals is performed from both MemberCategory as primary and Gender as primary. So while rollup function provides only totals for MemberCategory (i.e., sum of all Gender for each Member Category), the cube function provides totals for all MemberCategory (i.e. sum by Gender for each Member Category) AS WELL AS the totals of all Gender (i.e., sum by all MemberCategory for each Gender).
+
+Commonly used aggregation functions:
+
+Approx_count_distinct is for faster approximations
+
+

@@ -66,13 +66,26 @@ uv sync
 
 # Run Jupyter notebook
 uv run jupyter notebook
+or run the notebook file inside IDE as per usual
 ```
 
 Navigate to `notebooks/analysis.ipynb` to run the full analysis.
 
 ## Key Findings
 
-(To be populated after running analysis)
+Top Genres over time:
+- Comedy, Drama and Action have the highest activity.
+- Horror and Documentary have lower but consistent activity.
+- Crime has lower activity, perhaps because passengers do not want to watch movies that are too heavy in nature on flights.
+
+Latest Blockbusters (2017-2018)
+- These are mainly Marvel, DCU movies with high rating counts and good rating scores.
+
+Hidden Gems:
+- Documentary, Film-Noir and Western genres tend to be over-represented in this segment. They are niche genres but viewers who seek out these films will know more about them before viewing, and hence more likely to give a higher rating. 
+
+100 Inflight Catalog
+- We have a good mix of genres, popular recent blockbusters and hidden gems.
 
 ## Architecture
 

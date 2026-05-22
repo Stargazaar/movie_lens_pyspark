@@ -4,7 +4,7 @@ intermediate/
 input/
 
 # reference
-reference/
+#reference/
 
 # MovieLens dataset (downloaded separately)
 data/raw/*.csv

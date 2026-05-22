@@ -1,0 +1,44 @@
+ Objective
+
+Using a publicly available dataset, demonstrate your ability to ingest, transform, model, and analyze data to extract actionable insights relevant to an inflight entertainment context.
+Dataset
+
+Use the "MovieLens Latest Small" dataset, publicly available at:
+https://grouplens.org/datasets/movielens/latest/ (ml-latest-small.zip)
+
+This dataset contains approximately 100,000 ratings and 3,600 tag applications across 9,000 movies, created by 600 users. It is lightweight (~1 MB zipped) and runs comfortably on a laptop.
+
+ Technical Requirements
+
+    Language: Python.
+    Processing framework: PySpark running in local mode is preferred. Pandas or similar libraries are acceptable.
+    Project tooling: Use uv to manage the Python environment and dependencies. The project should be runnable with uv run after setup.
+    AI usage: Use of AI assistants is permitted. You are expected to understand and be able to explain all generated code during the follow-up interview.
+
+Instructions
+1. Data Ingestion, Transformation & Exploration
+
+    Load the dataset into your processing framework.
+    Perform a data cleansing step, for example:
+        Handle deduplication (e.g., duplicate ratings by the same user for the same movie).
+        Normalize timestamps into a consistent datetime format suitable for time-based analysis.
+    Build or describe a strategy to identify anomalies or outliers in the ratings data (e.g., users with suspiciously high rating volumes, movies with statistically improbable rating distributions, temporal anomalies).
+    Implement transformations to support the analytical questions, for example:
+        Create an aggregated gold table: average rating, rating count, and tag count per movie per genre.
+
+2. Analytical Questions
+
+Provide some analysis on the data using Python (show your work), for example:
+
+    What are the top 10 genres by total number of ratings, and how has their popularity evolved over time (by year of rating)?
+    Identify "hidden gems": movies with fewer than 50 ratings but an average rating above 4.0. Which genres are over-represented in this segment compared to the overall genre distribution?
+    Simulate an "inflight catalog" constraint: if you could only offer 100 movies on a flight, which 100 would you pick to maximize expected passenger satisfaction across diverse tastes? Describe your selection criteria (e.g., genre coverage, rating quality, popularity balance) and implement it.
+
+Deliverables
+
+    A zip file containing:
+        Python scripts or a Jupyter notebook with the implementation.
+        A pyproject.toml defining the project dependencies so the environment is reproducible.
+        A README.md that includes:
+            Step-by-step setup instructions using uv (environment creation, dependency installation, how to run the project).
+            A short summary of interesting findings from the analysis.
