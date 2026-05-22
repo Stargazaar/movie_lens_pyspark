@@ -66,10 +66,7 @@ uv sync
 
 # Run Jupyter notebook
 uv run jupyter notebook
-or run the notebook file inside IDE as per usual
-```
-
-Navigate to `notebooks/analysis.ipynb` to run the full analysis.
+or run the notebook file: `notebooks/analysis.ipynb` using an IDE
 
 ## Key Findings
 
